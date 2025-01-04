@@ -15,7 +15,7 @@ const app = express ();
 app.use(cookieParser());
 
 app.use(cors({
-        origin: ["http://localhost:5173", "https://metricssite.netlify.app/"], 
+        origin: ["https://metricssite.netlify.app/"], 
         credentials: true,
         methods: ["POST", "GET", "PUT", "DELETE"],
     }
