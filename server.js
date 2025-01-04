@@ -15,11 +15,10 @@ const app = express ();
 app.use(cookieParser());
 
 app.use(cors({
-        origin: ["https://metricssite.netlify.app/"], 
-        credentials: true,
-        methods: ["POST", "GET", "PUT", "DELETE"],
-    }
-));
+  origin: ["https://metricssite.netlify.app"], // Add your Netlify domain
+  credentials: true,
+  methods: ["POST", "GET", "PUT", "DELETE"]
+}));
 
 app.use(express.json());
 app.use(express.static("public"));
