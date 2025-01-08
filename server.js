@@ -30,6 +30,8 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  connectTimeout: 30000,  // Increase timeout to 30 seconds
+  timeout: 30000          // Set connection timeout
 });
 
 // Helper function to query using the connection pool
