@@ -229,16 +229,46 @@ app.post("/addNewDonation", async (req, res) => {
 });
 
 // Get all donations
-app.get("/getDonations", async (req, res) => {
-  try {
-    const donations = await query(
-      "SELECT d.*, c.name AS campaignName FROM donations d JOIN campaigns c ON d.campaignId = c.id ORDER BY d.id DESC"
-    );
-    res.json({ Status: "Success", Result: donations });
-  } catch (err) {
-    console.error("Error fetching donations:", err);
-    res.json({ Error: "Get donations data error in SQL" });
-  }
+// app.get("/getDonations", async (req, res) => {
+//   try {
+//     const donations = await query(
+//       "SELECT d.*, c.name AS campaignName FROM donations d JOIN campaigns c ON d.campaignId = c.id ORDER BY d.id DESC"
+//     );
+//     res.json({ Status: "Success", Result: donations });
+//   } catch (err) {
+//     console.error("Error fetching donations:", err);
+//     res.json({ Error: "Get donations data error in SQL" });
+//   }
+// });
+
+app.get("/getDonations", (req, res) => {
+  const sql = `
+    SELECT 
+       d.id,
+      d.message, 
+      d.date, 
+      d.amount, 
+      c.title, 
+      c.image, 
+      u.name,
+      u.photo
+    FROM 
+      donations d 
+    JOIN 
+      users u ON d.user_id = u.id 
+  JOIN 
+      campaigns c ON d.campaign_id = c.id
+    ORDER BY 
+      d.date DESC
+  `;
+  
+  con.query(sql, (err, result) => {
+    if (err) {
+      console.error("SQL Error:", err); // Log the actual SQL error
+      return res.json({ Error: "Get donations data error in SQL" });
+    }
+    return res.json({ Status: "Success", Result: result });
+  });
 });
 
 // Remove donation
