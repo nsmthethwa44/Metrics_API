@@ -368,33 +368,30 @@ app.get("/donationsCount", async (req, res) => {
 // ###########Leaderboard##############
 // Get leaderboard data
 app.get('/getLeaderboard', async (req, res) => {
-    try {
-        const sql = `
-        SELECT 
-            ROW_NUMBER() OVER (ORDER BY SUM(d.amount) DESC) AS rank,
-            u.name AS contributor_name,
-            u.photo,
-            SUM(d.amount) AS total_donations,
-            COUNT(d.id) AS number_of_donations,
-            MAX(d.date) AS last_donation_date,
-            COUNT(DISTINCT d.campaign_id) AS campaigns_supported
-        FROM donations d
-        JOIN users u ON d.user_id = u.id
-        GROUP BY u.id
-        ORDER BY total_donations DESC
+  try {
+      const sql = `
+      SELECT 
+          ROW_NUMBER() OVER (ORDER BY SUM(d.amount) DESC) AS rank,
+          u.name AS contributor_name,
+          u.photo,
+          SUM(d.amount) AS total_donations,
+          COUNT(d.id) AS number_of_donations,
+          MAX(d.date) AS last_donation_date,
+          COUNT(DISTINCT d.campaign_id) AS campaigns_supported
+      FROM donations d
+      JOIN users u ON d.user_id = u.id
+      GROUP BY u.id
+      ORDER BY total_donations DESC
       `;
-      await query(sql, (err, results) => {
-        if (err) {
-          console.error("SQL Error:", err); // Log the actual SQL error
-          return res.json({ Error: "Get donations data error in SQL" });
-        }
-        return res.json({ Status: "Success", Result: results });
-      });
-    } catch (error) {
-        console.log("Get donations data error in SQL", error)
-        res.json({ Error: "Get donations data error in SQL" });
-    }
-  });
+      // Execute the query and wait for the results
+      const results = await query(sql);
+      // Send the results back
+      res.status(200).json({ Status: "Success", Result: results });
+  } catch (error) {
+      console.error("Unexpected error:", error); // Log unexpected errors
+      res.status(500).json({ error: "Internal server error" });
+  }
+});
 // ###########End Leaderboard##############
 
 // ###########Admin##############
