@@ -14,7 +14,7 @@ app.use(cookieParser());
 
 app.use(
   cors({
-    origin: ["https://metricssite.netlify.app"],
+    origin: ["http://localhost:5173"],
     credentials: true,
     methods: ["POST", "GET", "PUT", "DELETE"],
   })
@@ -42,6 +42,7 @@ const query = (sql, values = []) =>
       resolve(results);
     });
   });
+
 
 
 const storage = multer.diskStorage({
@@ -97,7 +98,7 @@ app.get("/getUsers", async (req, res) => {
   }
 });
 
-// remove user data
+// remove user data from database
 app.delete("/deleteUser/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -153,6 +154,8 @@ app.post("/userLogin", async (req, res) => {
   }
 });
 
+
+
 // ###########End-Manage-Users###########
 
 // Repeat similar refactoring for Manage-Campaigns, Donations, and other sections
@@ -162,12 +165,11 @@ app.post("/userLogin", async (req, res) => {
 
 // Adding new campaign
 app.post("/createCampaign", upload.single("image"), async (req, res) => {
-  const { name, description, goal, startDate, endDate } = req.body;
-  const image = req.file?.filename || null;
+    const { title, goalAmount, description, startDate, endDate, status } = req.body;
+    const image = req.file?.filename || null;
   try {
-    const sql =
-      "INSERT INTO campaigns (`name`, `description`, `goal`, `startDate`, `endDate`, `photo`) VALUES (?)";
-    const values = [name, description, goal, startDate, endDate, image];
+    const sql = "INSERT INTO campaigns (`title`, `goal`, `description`, `start`, `end`, `status`, `image`) VALUES (?)";
+    const values = [title, goalAmount, description, startDate, endDate, status, image];
     await query(sql, [values]);
     res.json({ Status: "Success", message: "Campaign successfully added!" });
   } catch (err) {
@@ -187,38 +189,38 @@ app.get("/getCampaigns", async (req, res) => {
   }
 });
 
-// Remove campaign
-app.delete("/deleteCampaign/:id", async (req, res) => {
-  const { id } = req.params;
+
+// Count campaigns
+app.get("/campaignsCount", async (req, res) => {
   try {
-    await query("DELETE FROM campaigns WHERE id = ?", [id]);
-    res.json({ Status: "Success" });
+    const count = await query("SELECT COUNT(id) AS campaigns FROM campaigns");
+    res.json(count);
   } catch (err) {
-    console.error("Error deleting campaign:", err);
-    res.json({ Error: "Delete campaign error in SQL" });
+    console.error("Error counting campaigns:", err);
+    res.json({ Error: "Error in running campaigns count query" });
   }
 });
 
 // update campaign status 
-app.put("/updateCampaignStatus/:id", (req, res) => {
+app.put("/updateCampaignStatus/:id", async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
-  
-    const sql = "UPDATE campaigns SET status = ? WHERE id = ?";
-    con.query(sql, [status, id], (err, result) => {
-        if (err) {
-            return res.json({ Status: "Error", Error: "Error updating campaign status" });
-        }
-        return res.json({ Status: "Success", Message: "Campaign status updated successfully" });
-    });
+    try {
+        const sql = "UPDATE campaigns SET status = ? WHERE id = ?";
+        await query(sql, [status, id])
+        res.json({ Status: "Success", Message: "Campaign status updated successfully" });
+    } catch (error) {
+        res.json({ Status: "Error", Error: "Error updating campaign status" });
+    }
   });
-  
-    
+
   // count active or inactive campaign status 
-app.get('/countAllCampaignsStatus', (req, res) => {
-    // SQL query to count statuses
+// count active or inactive campaign status 
+app.get('/countAllCampaignsStatus', async (req, res) => {
+  // SQL query to count statuses
+  try {
     const sql = `SELECT status, COUNT(*) as count FROM campaigns GROUP BY status`;
-    con.query(sql, (error, rows) => {
+    await query(sql, (error, rows) => {
       if (error) {
         console.error('Error counting campaign statuses:', error);
         return res.status(500).json({ success: false, message: 'Error counting statuses' });
@@ -234,51 +236,49 @@ app.get('/countAllCampaignsStatus', (req, res) => {
   
       res.json({ success: true, result: statusCounts });
     });
-  });
-
-// Count campaigns
-app.get("/campaignsCount", async (req, res) => {
-  try {
-    const count = await query("SELECT COUNT(id) AS campaigns FROM campaigns");
-    res.json(count);
-  } catch (err) {
-    console.error("Error counting campaigns:", err);
-    res.json({ Error: "Error in running campaigns count query" });
+  } catch (error) {
+    console.log("Error Counting all campaign status", error)
   }
+ 
 });
 
 // updating campaign funds
-app.put('/updateRaisedAmount', (req, res) => {
-    const updateSql = `
-      UPDATE campaigns
-      SET raised = (
-        SELECT COALESCE(SUM(d.amount), 0)
-        FROM donations d
-        WHERE d.campaign_id = campaigns.id
-      );
-    `;
-  
-    con.query(updateSql, (err) => {
-      if (err) return res.json({ Error: "SQL Error" });
-  
+app.put('/updateRaisedAmount', async (req, res) => {
+  try {
+      // Update the raised amount in campaigns table
+      const updateSql = `
+          UPDATE campaigns
+          SET raised = (
+              SELECT COALESCE(SUM(d.amount), 0)
+              FROM donations d
+              WHERE d.campaign_id = campaigns.id
+          );
+      `;
+      await query(updateSql);
+
       // Fetch updated campaigns
       const fetchSql = `SELECT * FROM campaigns`;
-  
-      con.query(fetchSql, (err, result) => {
-        if (err) return res.json({ Error: "SQL Fetch Error" });
-        return res.json({ Status: "Success", Result: result });
-      });
-    });
-  });
+      const [result] = await query(fetchSql); // Await query and assign result
+
+      res.json({ Status: "Success", Result: result });
+  } catch (error) {
+      console.error("Failed to update raised amount:", error);
+      res.status(500).json({ Error: "SQL Fetch Error" });
+  }
+});
+
+
+// ###########ENd Manage-Campaigns##############
+
 
 // ###########Manage-Donations##############
 
 // Add new donation
 app.post("/addToDonations", async (req, res) => {
-   const { user_id, campaign_id, amount,  message} = req.body;
-  if (!user_id || !campaign_id || !amount || !message) {
-    return res.status(400).json({ error: "All fields are required!" });
-}
+    const { user_id, campaign_id, amount,  message} = req.body;
+    if (!user_id || !campaign_id || !amount || !message) {
+      return res.status(400).json({ error: "All fields are required!" });
+  }
   try {
     const sql = "INSERT INTO donations (`user_id`, `campaign_id`, `amount`, `message`) VALUES (?)";
     const values = [user_id, campaign_id, amount, message];
@@ -290,74 +290,50 @@ app.post("/addToDonations", async (req, res) => {
   }
 });
 
-app.get("/getMyDonations/:user_id", (req, res) => {
-    const { user_id } = req.params;
-    const sql = `
-    SELECT 
-    c.id, 
-    c.title, 
-    c.image, 
-    d.amount, 
-    d.message, 
-    d.date,
-    u.name, 
-    u.photo
-    FROM campaigns c 
-    LEFT JOIN 
-    donations d ON c.id = d.campaign_id
-    LEFT JOIN 
-    users u ON d.user_id  = u.id WHERE d.user_id = ?; 
-    `;
-    con.query(sql, [user_id], (err, results) => {
-      if (err) {
-        console.error("Error fetching donations data:", err);
-        return res.status(500).json({ success: false, message: "Server error" });
-      }
-      res.json({ success: true, Result: results });
-    });
-  });
-
 // Get all donations
-// app.get("/getDonations", async (req, res) => {
-//   try {
-//     const donations = await query(
-//       "SELECT d.*, c.name AS campaignName FROM donations d JOIN campaigns c ON d.campaignId = c.id ORDER BY d.id DESC"
-//     );
-//     res.json({ Status: "Success", Result: donations });
-//   } catch (err) {
-//     console.error("Error fetching donations:", err);
-//     res.json({ Error: "Get donations data error in SQL" });
-//   }
-// });
+app.get("/getDonations", async (req, res) => {
+  try {
+    const donations = await query(
+' SELECT d.id, d.message, d.date, d.amount, c.title, c.image, u.name, u.photo FROM donations d JOIN users u ON d.user_id = u.id JOIN campaigns c ON d.campaign_id = c.id ORDER BY d.date DESC'
+    );
+    res.json({ Status: "Success", Result: donations });
+  } catch (err) {
+    console.error("Error fetching donations:", err);
+    res.json({ Error: "Get donations data error in SQL" });
+  }
+});
 
-app.get("/getDonations", (req, res) => {
-  const sql = `
-    SELECT 
-       d.id,
-      d.message, 
-      d.date, 
-      d.amount, 
+// get user donations 
+
+app.get("/getMyDonations/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+
+  try {
+    const sql = `
+      SELECT 
+      c.id, 
       c.title, 
       c.image, 
-      u.name,
+      d.amount, 
+      d.message, 
+      d.date,
+      u.name, 
       u.photo
-    FROM 
-      donations d 
-    JOIN 
+      FROM campaigns c 
+      LEFT JOIN 
+      donations d ON c.id = d.campaign_id
+      LEFT JOIN 
       users u ON d.user_id = u.id 
-  JOIN 
-      campaigns c ON d.campaign_id = c.id
-    ORDER BY 
-      d.date DESC
-  `;
-  
-  con.query(sql, (err, result) => {
-    if (err) {
-      console.error("SQL Error:", err); // Log the actual SQL error
-      return res.json({ Error: "Get donations data error in SQL" });
-    }
-    return res.json({ Status: "Success", Result: result });
-  });
+      WHERE d.user_id = ?;
+    `;
+
+    // Execute the query using the pool
+    const result = await query(sql, [user_id]);
+    res.json({ success: true, Result: result });
+  } catch (error) {
+    console.error("Error fetching donations data:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
 });
 
 // Remove donation
@@ -383,132 +359,112 @@ app.get("/donationsCount", async (req, res) => {
   }
 });
 
-// add user donation 
-app.post("/addToDonations", (req, res) => {
-  const { user_id, campaign_id, amount,  message} = req.body;
-  if (!user_id || !campaign_id || !amount || !message) {
-    return res.status(400).json({ error: "All fields are required!" });
-}
-  const sql = "INSERT INTO donations (`user_id`, `campaign_id`, `amount`, `message`) VALUES (?)";
-  const values = [user_id, campaign_id, amount, message];
 
-  con.query(sql, [values], (err, result) => {
-    if (err) {
-      console.error("Database Error:", err);
-      return res.status(500).json({ error: "Failed to insert data." });
-    }
-    res.json({Status: "Success"})
-  });
-});
 
-// ###########Miscellaneous##############
 
+
+// ###########End Donations##############
+
+// ###########Leaderboard##############
 // Get leaderboard data
-app.get('/getLeaderboard', (req, res) => {
-  const sql = `
-    SELECT 
-        ROW_NUMBER() OVER (ORDER BY SUM(d.amount) DESC) AS rank,
-        u.name AS contributor_name,
-        u.photo,
-        SUM(d.amount) AS total_donations,
-        COUNT(d.id) AS number_of_donations,
-        MAX(d.date) AS last_donation_date,
-        COUNT(DISTINCT d.campaign_id) AS campaigns_supported
-    FROM donations d
-    JOIN users u ON d.user_id = u.id
-    GROUP BY u.id
-    ORDER BY total_donations DESC
-  `;
-  
-  con.query(sql, (err, results) => {
-    if (err) {
-      console.error("SQL Error:", err); // Log the actual SQL error
-      return res.json({ Error: "Get donations data error in SQL" });
+app.get('/getLeaderboard', async (req, res) => {
+    try {
+        const sql = `
+        SELECT 
+            ROW_NUMBER() OVER (ORDER BY SUM(d.amount) DESC) AS rank,
+            u.name AS contributor_name,
+            u.photo,
+            SUM(d.amount) AS total_donations,
+            COUNT(d.id) AS number_of_donations,
+            MAX(d.date) AS last_donation_date,
+            COUNT(DISTINCT d.campaign_id) AS campaigns_supported
+        FROM donations d
+        JOIN users u ON d.user_id = u.id
+        GROUP BY u.id
+        ORDER BY total_donations DESC
+      `;
+      await query(sql, (err, results) => {
+        if (err) {
+          console.error("SQL Error:", err); // Log the actual SQL error
+          return res.json({ Error: "Get donations data error in SQL" });
+        }
+        return res.json({ Status: "Success", Result: results });
+      });
+    } catch (error) {
+        console.log("Get donations data error in SQL", error)
+        res.json({ Error: "Get donations data error in SQL" });
     }
-    return res.json({ Status: "Success", Result: results });
   });
-});
+// ###########End Leaderboard##############
 
-
-// ###########Manage-Admin############## 
+// ###########Admin##############
 // admin register 
-app.post("/addNewAdmin", upload.single("photo"), (req, res) => {
+app.post("/addNewAdmin", upload.single("photo"), async (req, res) => {
   const { name, email, password } = req.body;
   const photo = req.file?.filename || null;
-  const searchSql = "SELECT * FROM admins WHERE email = ?";
-  con.query(searchSql , [email], (err, results) => {
-    if (err) {
-      console.error("Database Error:", err);
-      return res.status(500).json({ error: "Database error occurred." });
-    }
-    if (results.length > 0) {
-      console.log("Admin already exists");
+  try {
+    const existingUser = await query("SELECT * FROM admins WHERE email = ?", [email]);
+    if (existingUser.length > 0) {
       return res.status(409).json({
         Status: "Exists",
         message: "Admin already exists. Please log in.",
       });
-    } else {
-      bcrypt.hash(password, saltRounds, (hashErr, hashedPassword) => {
-        if (hashErr) {
-          console.error("Hashing Error:", hashErr);
-          return res.status(500).json({ error: "Failed to hash password." });
-        }
-        const sql = "INSERT INTO admins (`name`, `email`,  `password`, `photo`) VALUES (?)";
-        const values = [name, email, hashedPassword, photo];
-        con.query(sql, [values], (insertErr, result) => {
-          if (insertErr) {
-            console.error("Insert Error:", insertErr);
-            return res
-              .status(500)
-              .json({ error: "Failed to insert admin details." });
-          }
-          res.json({ Status: "Success", message: "Admin successfully added!" });
-        });
-      });
     }
-  });
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const sql =
+      "INSERT INTO admins (`name`, `email`,  `password`, `photo`) VALUES (?)";
+    const values = [name, email, hashedPassword, photo];
+    await query(sql, [values]);
+    res.json({ Status: "Success", message: "User successfully added!" });
+  } catch (err) {
+    console.error("Error:", err);
+    res.status(500).json({ error: "An error occurred while adding the user." });
+  }
 });
 
-//  user login 
-app.post("/adminLogin", (req, res) => {
+
+//  admin login 
+app.post("/adminLogin", async (req, res) => {
   const { email, password } = req.body;
-  const sql = "SELECT * FROM admins WHERE email = ?";
-  con.query(sql, [email], (err, results) => {
-    if (err) {
-      console.error("Database Error:", err);
-      return res.status(500).json({ error: "Database error occurred." });
+  try {
+    const admins = await query("SELECT * FROM admins WHERE email = ?", [email]);
+    if (admins.length === 0) {
+      return res
+        .status(401)
+        .json({ Status: "Error", message: "Admin not found. Please register." });
     }
-    if (results.length === 0) {
-      return res.status(401).json({ Status: "Error", message: "Admin not found. Please register." });
+    const admin = admins[0];
+    const isMatch = await bcrypt.compare(password, admin.password);
+    if (!isMatch) {
+      return res.status(401).json({ Status: "Error", message: "Incorrect password." });
     }
-    const admin = results[0];
-    // console.log("User Object Before Token:", user);
-    bcrypt.compare(password, admin.password, (compareErr, isMatch) => {
-      if (compareErr || !isMatch) {
-        console.error("Password Verification Failed:", compareErr);
-        return res.status(401).json({ Status: "Error", message: "Incorrect password." });
-      }
-      // Generate JWT token
-      const token = jwt.sign({ id: admin.id, name: admin.name, email: admin.email, photo: admin.photo}, "jwt-secret-key", { expiresIn: "1d" });
-      // Set cookie
-      res.cookie("token", token);
-      // console.log("Login Successful, Token:", token);
-      res.json({Status: "Success", message: "Login successful!", token, admin: { id: admin.id, name: admin.name, email: admin.email, photo: admin.photo },});
+    const token = jwt.sign(
+      { id: admin.id, name: admin.name, email: admin.email, photo: admin.photo },
+      "jwt-secret-key",
+      { expiresIn: "1d" }
+    );
+    res.cookie("token", token);
+    res.json({
+      Status: "Success",
+      message: "Login successful!",
+      token,
+      admin: { id: admin.id, name: admin.name, email: admin.email, photo: admin.photo },
     });
-  });
+  } catch (err) {
+    console.error("Error logging in admin:", err);
+    res.status(500).json({ error: "An error occurred during login." });
+  }
 });
-// ###########End-Manage-Admin###########
+// ###########End Admin##############
 
-// Logout user
-app.post("/logout", (req, res) => {
-  res.clearCookie("token");
-  res.json({ Status: "Success", message: "Logged out successfully!" });
-});
 
-// Home route (for testing)
-app.get("/", (req, res) => {
-  res.json("Welcome to the API!");
-});
+// ###########Log-Out############## 
+  // create logout API 
+  app.get("/logout", (req, res) =>{
+    res.clearCookie("token");
+    return res.json({Status: "Success", message: "Logged out successfully!"});
+  })
+// ###########End-Log-Out###########
 
 // ###########Server Configuration##############
 const PORT = process.env.PORT || 8081;
