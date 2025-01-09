@@ -43,8 +43,7 @@ const query = (sql, values = []) =>
     });
   });
 
-// Serve images from the 'public/images' folder
-app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
+
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -59,6 +58,8 @@ const upload = multer({
   storage: storage,
 });
 
+// Serve images from the 'public/images' folder
+app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
 // ###########Manage-Users##############
 
 // adding new users
