@@ -43,6 +43,9 @@ const query = (sql, values = []) =>
     });
   });
 
+// Serve images from the 'public/images' folder
+app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "./public/images");
